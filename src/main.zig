@@ -15,7 +15,7 @@ pub fn main() !void {
         try print_dollar();
         const line = try getInput(allocator);
         defer allocator.free(line);
-        if (std.mem.eql(u8, line, "quit") == true) {
+        if (std.mem.eql(u8, line, "\\q") == true) {
             return;
         }
 

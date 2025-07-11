@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+// const parser = @import("parser.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -10,17 +11,16 @@ pub fn main() !void {
         }
     }
     const allocator = gpa.allocator();
+    try print("welcome to akpa, a minimal sql engine\n");
+    try print("type '\\q' to quit\n");
 
     while (true) {
-        try print_dollar();
+        try print("$> ");
         const line = try getInput(allocator);
         defer allocator.free(line);
         if (std.mem.eql(u8, line, "\\q") == true) {
             return;
         }
-
-        const tokens = try lexer.tokenize(allocator, line);
-        defer (lexer.free_tokens(allocator, tokens));
     }
 }
 
@@ -31,7 +31,7 @@ fn getInput(allocator: std.mem.Allocator) ![]const u8 {
     return std.mem.trim(u8, line, "\r");
 }
 
-fn print_dollar() !void {
+fn print(prompt: []const u8) !void {
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("$> ", .{});
+    try stdout.print("{s}", .{prompt});
 }

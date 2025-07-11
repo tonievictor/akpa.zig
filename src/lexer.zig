@@ -22,13 +22,14 @@ const TokenType = union(enum) {
     asterix: u8,
     oparen: u8,
     cparen: u8,
+    EOF: u8,
 };
 
-const Token = struct {
+pub const Token = struct {
     token_type: TokenType,
-    col: i32,
+    col: u32,
 
-    pub fn init(ttype: TokenType, col: i32) Token {
+    pub fn init(ttype: TokenType, col: u32) Token {
         return Token{
             .token_type = ttype,
             .col = col,
@@ -36,152 +37,140 @@ const Token = struct {
     }
 };
 
-const LexerError = error{
+pub const LexerError = error{
     IllegalCharacter,
     TrailingCharacter,
+    MalformedInput,
 };
 
-pub fn free_tokens(allocator: std.mem.Allocator, tokens: []Token) void {
-    for (tokens) |token| {
-        switch (token.token_type) {
-            .identifier, .string => |i| {
-                allocator.free(i);
-            },
-            else => {
-                continue;
-            },
-        }
+pub const Lexer = struct {
+    input: []const u8,
+    length: usize,
+    index: u32,
+    allocator: std.mem.Allocator,
+
+    pub fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
+        return Lexer{
+            .input = input,
+            .length = input.len,
+            .allocator = allocator,
+            .index = 0,
+        };
     }
-    allocator.free(tokens);
-}
 
-pub fn tokenize(allocator: std.mem.Allocator, code: []const u8) ![]Token {
-    var index: u32 = 0;
-    var col: i32 = 1;
-    var tokens = std.ArrayList(Token).init(allocator);
-
-    while (index < code.len) {
-        var token: Token = undefined;
-        const char = code[index];
+    pub fn next_token(self: *Lexer) !Token {
+        while ((self.index < self.length) and self.input[self.index] == ' ') {
+            self.index += 1;
+        }
+        if (self.index >= self.length) {
+            return Token.init(TokenType{ .EOF = ' ' }, self.index);
+        }
+        const char = self.input[self.index];
         switch (char) {
-            '\n' => {
-                col = 1;
-                index += 1;
-                continue;
-            },
-            ' ', '\t' => {
-                col += 1;
-                index += 1;
-                continue;
-            },
             ';' => {
                 const ttype = TokenType{ .semicolon = ';' };
-                token = Token.init(ttype, col);
-                col += 1;
-                index += 1;
+                self.index += 1;
+                return Token.init(ttype, self.index);
             },
             ',' => {
                 const ttype = TokenType{ .comma = ',' };
-                token = Token.init(ttype, col);
-                col += 1;
-                index += 1;
+                self.index += 1;
+                return Token.init(ttype, self.index);
             },
             '*' => {
                 const ttype = TokenType{ .asterix = '*' };
-                token = Token.init(ttype, col);
-                col += 1;
-                index += 1;
+                self.index += 1;
+                return Token.init(ttype, self.index);
             },
             '(' => {
                 const ttype = TokenType{ .oparen = '(' };
-                token = Token.init(ttype, col);
-                col += 1;
-                index += 1;
+                self.index += 1;
+                return Token.init(ttype, self.index);
             },
             ')' => {
                 const ttype = TokenType{ .cparen = ')' };
-                token = Token.init(ttype, col);
-                col += 1;
-                index += 1;
-            },
-            '\'' => {
-                const amv = try extract_string_token(allocator, code, index + 1, col + 1);
-                token = amv.t;
-                index = amv.i;
-                col = amv.c;
+                self.index += 1;
+                return Token.init(ttype, self.index);
             },
             '0'...'9' => {
-                const amv = try extract_numeric_token(code, index, col);
-                token = amv.t;
-                index = amv.i;
-                col = amv.c;
+                const amtv = try extract_numeric_token(self.input, self.index);
+                self.index = amtv.i;
+                return amtv.t;
+            },
+            '\'' => {
+                const amtv = try extract_string_token(self.allocator, self.input, self.index);
+                self.index = amtv.i;
+                return amtv.t;
             },
             'A'...'Z', 'a'...'z' => {
-                const amv = try extract_character_sequence(allocator, code, index, col);
-                token = amv.t;
-                index = amv.i;
-                col = amv.c;
+                const amtv = try extract_character_sequence(self.allocator, self.input, self.index);
+                self.index = amtv.i;
+                return amtv.t;
             },
             else => {
+                std.debug.print("ERROR,{d}: unrecognized character found in input stream -> {c}\n", .{ self.index + 1, char });
                 return LexerError.IllegalCharacter;
             },
         }
-        try tokens.append(token);
     }
-    return try tokens.toOwnedSlice();
-}
 
-fn extract_numeric_token(code: []const u8, s_index: u32, s_col: i32) !struct { t: Token, i: u32, c: i32 } {
+    pub fn free_token(self: *Lexer, token: Token) void {
+        switch (token.token_type) {
+            .identifier, .string => |i| {
+                self.allocator.free(i);
+            },
+            else => {},
+        }
+    }
+};
+
+fn extract_numeric_token(code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {
     var index = s_index;
-    var col = s_col;
     while (index < code.len) {
         switch (code[index]) {
             '0'...'9' => {
                 index += 1;
-                col += 1;
             },
             else => break,
         }
     }
     const value = try std.fmt.parseInt(i32, code[s_index..index], 0);
     const ttype = TokenType{ .numeric = value };
-    const token = Token.init(ttype, s_col);
-    return .{ .t = token, .i = index, .c = col };
+    const token = Token.init(ttype, s_index + 1);
+    return .{ .t = token, .i = index };
 }
 
-fn extract_string_token(allocator: std.mem.Allocator, code: []const u8, s_index: u32, s_col: i32) !struct { t: Token, i: u32, c: i32 } {
-    var index = s_index;
-    var col = s_col;
+fn extract_string_token(allocator: std.mem.Allocator, code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {
+    var index = s_index + 1;
 
     while (index < code.len) {
-        const i = index;
+        if (code[index] == '\'') {
+            index += 1;
+            break;
+        }
         index += 1;
-        col += 1;
-        if (code[i] == '\'') break;
     }
 
     const copied = try allocator.dupe(u8, code[s_index..index]);
     const ttype = TokenType{ .string = copied };
-    const token = Token.init(ttype, s_col - 1);
-    return .{ .t = token, .i = index, .c = col };
+    const token = Token.init(ttype, s_index + 1);
+    return .{ .t = token, .i = index };
 }
 
-fn extract_character_sequence(allocator: std.mem.Allocator, code: []const u8, s_index: u32, s_col: i32) !struct { t: Token, i: u32, c: i32 } {
+fn extract_character_sequence(allocator: std.mem.Allocator, code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {
     var index = s_index;
-    var col = s_col;
     while (index < code.len) {
         switch (code[index]) {
-            'A'...'Z', 'a'...'z' => {
+            'A'...'Z', 'a'...'z', '0'...'9' => {
                 index += 1;
-                col += 1;
             },
             else => break,
         }
     }
 
     const ttype = try make_identifier_or_keyword(allocator, code[s_index..index]);
-    const token = Token.init(ttype, s_col);
-    return .{ .t = token, .i = index, .c = col };
+    const token = Token.init(ttype, s_index + 1);
+    return .{ .t = token, .i = index };
 }
 
 fn make_identifier_or_keyword(allocator: std.mem.Allocator, string: []const u8) !TokenType {

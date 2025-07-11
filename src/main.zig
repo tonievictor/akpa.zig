@@ -1,6 +1,5 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
-// const parser = @import("parser.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -19,7 +18,7 @@ pub fn main() !void {
         const line = try getInput(allocator);
         defer allocator.free(line);
         if (std.mem.eql(u8, line, "\\q") == true) {
-            return;
+            break;
         }
     }
 }

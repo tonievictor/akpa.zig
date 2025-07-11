@@ -114,6 +114,13 @@ pub const Lexer = struct {
         }
     }
 
+    pub fn peek_token(self: *Lexer) ?Token {
+        const i = self.index;
+        defer self.index = i;
+
+        return self.next_token() catch null;
+    }
+
     pub fn free_token(self: *Lexer, token: Token) void {
         switch (token.token_type) {
             .identifier, .string => |i| {

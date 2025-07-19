@@ -1,19 +1,6 @@
 const std = @import("std");
 
-const KeywordVariant = enum {
-    Create,
-    Table,
-    Int,
-    Text,
-    Insert,
-    Into,
-    Values,
-    Select,
-    From,
-};
-
-const TokenType = union(enum) {
-    keyword: KeywordVariant,
+pub const TokenKind = union(enum) {
     identifier: []const u8,
     string: []const u8,
     numeric: i32,
@@ -22,16 +9,25 @@ const TokenType = union(enum) {
     asterix: u8,
     oparen: u8,
     cparen: u8,
-    EOF: u8,
+    create: void,
+    table: void,
+    int: void,
+    text: void,
+    insert: void,
+    into: void,
+    values: void,
+    select: void,
+    from: void,
+    EOF: void,
 };
 
 pub const Token = struct {
-    token_type: TokenType,
+    kind: TokenKind,
     col: u32,
 
-    pub fn init(ttype: TokenType, col: u32) Token {
+    pub fn init(kind: TokenKind, col: u32) Token {
         return Token{
-            .token_type = ttype,
+            .kind = kind,
             .col = col,
         };
     }
@@ -63,32 +59,32 @@ pub const Lexer = struct {
             self.index += 1;
         }
         if (self.index >= self.length) {
-            return Token.init(TokenType{ .EOF = ' ' }, self.index);
+            return Token.init(TokenKind{ .EOF = {} }, self.index);
         }
         const char = self.input[self.index];
         switch (char) {
             ';' => {
-                const ttype = TokenType{ .semicolon = ';' };
+                const ttype = TokenKind{ .semicolon = ';' };
                 self.index += 1;
                 return Token.init(ttype, self.index);
             },
             ',' => {
-                const ttype = TokenType{ .comma = ',' };
+                const ttype = TokenKind{ .comma = ',' };
                 self.index += 1;
                 return Token.init(ttype, self.index);
             },
             '*' => {
-                const ttype = TokenType{ .asterix = '*' };
+                const ttype = TokenKind{ .asterix = '*' };
                 self.index += 1;
                 return Token.init(ttype, self.index);
             },
             '(' => {
-                const ttype = TokenType{ .oparen = '(' };
+                const ttype = TokenKind{ .oparen = '(' };
                 self.index += 1;
                 return Token.init(ttype, self.index);
             },
             ')' => {
-                const ttype = TokenType{ .cparen = ')' };
+                const ttype = TokenKind{ .cparen = ')' };
                 self.index += 1;
                 return Token.init(ttype, self.index);
             },
@@ -122,7 +118,7 @@ pub const Lexer = struct {
     }
 
     pub fn free_token(self: *Lexer, token: Token) void {
-        switch (token.token_type) {
+        switch (token.kind) {
             .identifier, .string => |i| {
                 self.allocator.free(i);
             },
@@ -142,7 +138,7 @@ fn extract_numeric_token(code: []const u8, s_index: u32) !struct { t: Token, i: 
         }
     }
     const value = try std.fmt.parseInt(i32, code[s_index..index], 0);
-    const ttype = TokenType{ .numeric = value };
+    const ttype = TokenKind{ .numeric = value };
     const token = Token.init(ttype, s_index + 1);
     return .{ .t = token, .i = index };
 }
@@ -159,7 +155,7 @@ fn extract_string_token(allocator: std.mem.Allocator, code: []const u8, s_index:
     }
 
     const copied = try allocator.dupe(u8, code[s_index..index]);
-    const ttype = TokenType{ .string = copied };
+    const ttype = TokenKind{ .string = copied };
     const token = Token.init(ttype, s_index + 1);
     return .{ .t = token, .i = index };
 }
@@ -180,27 +176,27 @@ fn extract_character_sequence(allocator: std.mem.Allocator, code: []const u8, s_
     return .{ .t = token, .i = index };
 }
 
-fn make_identifier_or_keyword(allocator: std.mem.Allocator, string: []const u8) !TokenType {
+fn make_identifier_or_keyword(allocator: std.mem.Allocator, string: []const u8) !TokenKind {
     if ((std.mem.eql(u8, string, "CREATE")) or (std.mem.eql(u8, string, "create"))) {
-        return TokenType{ .keyword = KeywordVariant.Create };
+        return TokenKind{ .create = {} };
     } else if ((std.mem.eql(u8, string, "TABLE")) or (std.mem.eql(u8, string, "table"))) {
-        return TokenType{ .keyword = KeywordVariant.Table };
+        return TokenKind{ .table = {} };
     } else if ((std.mem.eql(u8, string, "INT")) or (std.mem.eql(u8, string, "int"))) {
-        return TokenType{ .keyword = KeywordVariant.Int };
+        return TokenKind{ .int = {} };
     } else if ((std.mem.eql(u8, string, "TEXT")) or (std.mem.eql(u8, string, "text"))) {
-        return TokenType{ .keyword = KeywordVariant.Text };
+        return TokenKind{ .text = {} };
     } else if ((std.mem.eql(u8, string, "INSERT")) or (std.mem.eql(u8, string, "insert"))) {
-        return TokenType{ .keyword = KeywordVariant.Insert };
+        return TokenKind{ .insert = {} };
     } else if ((std.mem.eql(u8, string, "INTO")) or (std.mem.eql(u8, string, "into"))) {
-        return TokenType{ .keyword = KeywordVariant.Into };
+        return TokenKind{ .into = {} };
     } else if ((std.mem.eql(u8, string, "VALUES")) or (std.mem.eql(u8, string, "values"))) {
-        return TokenType{ .keyword = KeywordVariant.Values };
+        return TokenKind{ .values = {} };
     } else if ((std.mem.eql(u8, string, "SELECT")) or (std.mem.eql(u8, string, "select"))) {
-        return TokenType{ .keyword = KeywordVariant.Select };
+        return TokenKind{ .select = {} };
     } else if ((std.mem.eql(u8, string, "FROM")) or (std.mem.eql(u8, string, "from"))) {
-        return TokenType{ .keyword = KeywordVariant.From };
+        return TokenKind{ .from = {} };
     } else {
         const copied = try allocator.dupe(u8, string);
-        return TokenType{ .identifier = copied };
+        return TokenKind{ .identifier = copied };
     }
 }

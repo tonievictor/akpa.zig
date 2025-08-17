@@ -31,6 +31,21 @@ pub const Token = struct {
             .col = col,
         };
     }
+
+    pub fn strVal(self: Token) []const u8 {
+        return switch (self.kind) {
+            .identifier => self.kind.identifier,
+            .string => self.kind.string,
+            else => unreachable,
+        };
+    }
+
+    pub fn numVal(self: Token) i32 {
+        return switch (self.kind) {
+            .numeric => self.kind.numeric,
+            else => unreachable,
+        };
+    }
 };
 
 pub const LexerError = error{
@@ -43,6 +58,7 @@ pub const Lexer = struct {
     input: []const u8,
     length: usize,
     index: u32,
+    tok: Token,
     allocator: std.mem.Allocator,
 
     pub fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
@@ -51,7 +67,12 @@ pub const Lexer = struct {
             .length = input.len,
             .allocator = allocator,
             .index = 0,
+            .tok = Token.init(TokenKind{ .EOF = {} }, 0),
         };
+    }
+
+    pub fn curr_token(self: *Lexer) Token {
+        return self.tok;
     }
 
     pub fn next_token(self: *Lexer) !Token {
@@ -59,48 +80,57 @@ pub const Lexer = struct {
             self.index += 1;
         }
         if (self.index >= self.length) {
-            return Token.init(TokenKind{ .EOF = {} }, self.index);
+            self.tok = Token.init(TokenKind{ .EOF = {} }, self.index);
+            return self.tok;
         }
         const char = self.input[self.index];
         switch (char) {
             ';' => {
                 const ttype = TokenKind{ .semicolon = ';' };
                 self.index += 1;
-                return Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.index);
+                return self.tok;
             },
             ',' => {
                 const ttype = TokenKind{ .comma = ',' };
                 self.index += 1;
-                return Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.index);
+                return self.tok;
             },
             '*' => {
                 const ttype = TokenKind{ .asterix = '*' };
                 self.index += 1;
-                return Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.index);
+                return self.tok;
             },
             '(' => {
                 const ttype = TokenKind{ .oparen = '(' };
                 self.index += 1;
-                return Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.index);
+                return self.tok;
             },
             ')' => {
                 const ttype = TokenKind{ .cparen = ')' };
                 self.index += 1;
-                return Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.index);
+                return self.tok;
             },
             '0'...'9' => {
                 const amtv = try extract_numeric_token(self.input, self.index);
                 self.index = amtv.i;
+                self.tok = amtv.t;
                 return amtv.t;
             },
             '\'' => {
                 const amtv = try extract_string_token(self.allocator, self.input, self.index);
                 self.index = amtv.i;
+                self.tok = amtv.t;
                 return amtv.t;
             },
             'A'...'Z', 'a'...'z' => {
                 const amtv = try extract_character_sequence(self.allocator, self.input, self.index);
                 self.index = amtv.i;
+                self.tok = amtv.t;
                 return amtv.t;
             },
             else => {

@@ -21,8 +21,11 @@ pub fn main() !void {
             break;
         }
 
-        const stmt = try parser.parse(allocator, line);
-        defer parser.free_row(allocator, stmt);
+        const stmt = parser.parse(allocator, line) catch |err| {
+            std.debug.print("{any}\n", .{err});
+            continue;
+        };
+        defer parser.free_table(allocator, stmt.table);
         std.debug.print("{any}\n", .{stmt});
     }
 }

@@ -3,7 +3,7 @@ const std = @import("std");
 pub const TokenKind = union(enum) {
     identifier: []const u8,
     string: []const u8,
-    numeric: i32,
+    numeric: u32,
     semicolon: u8,
     comma: u8,
     asterix: u8,
@@ -40,7 +40,7 @@ pub const Token = struct {
         };
     }
 
-    pub fn numVal(self: Token) i32 {
+    pub fn numVal(self: Token) u32 {
         return switch (self.kind) {
             .numeric => self.kind.numeric,
             else => unreachable,
@@ -167,7 +167,7 @@ fn extract_numeric_token(code: []const u8, s_index: u32) !struct { t: Token, i: 
             else => break,
         }
     }
-    const value = try std.fmt.parseInt(i32, code[s_index..index], 0);
+    const value = try std.fmt.parseInt(u32, code[s_index..index], 0);
     const ttype = TokenKind{ .numeric = value };
     const token = Token.init(ttype, s_index + 1);
     return .{ .t = token, .i = index };

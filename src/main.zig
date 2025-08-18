@@ -25,7 +25,7 @@ pub fn main() !void {
             std.debug.print("{any}\n", .{err});
             continue;
         };
-        defer parser.free_table(allocator, stmt.table);
+        defer parser.free_stmt(allocator, stmt);
         std.debug.print("{any}\n", .{stmt});
     }
 }

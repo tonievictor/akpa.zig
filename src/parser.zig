@@ -3,9 +3,26 @@ const lexer = @import("lexer.zig");
 const ArrayList = std.ArrayList;
 
 const StmtKind = enum { Insert, Select, Create };
+
+const CTypes = enum {
+    text,
+    int,
+};
+
 const Statement = struct {
     kind: StmtKind,
     table: ?Table,
+    schema: ?TableSchema,
+};
+
+const TableSchema = struct {
+    name: []const u8,
+    rows: ArrayList(Row),
+};
+
+const Row = struct {
+    col: []const u8,
+    ctype: CTypes,
 };
 
 const Expression = union(enum) {
@@ -19,8 +36,8 @@ const Table = struct {
     values: ?ArrayList(Expression),
 };
 
-pub fn free_table(allocator: std.mem.Allocator, table: ?Table) void {
-    if (table) |t| {
+pub fn free_stmt(allocator: std.mem.Allocator, stmt: Statement) void {
+    if (stmt.table) |t| {
         allocator.free(t.name);
         defer t.columns.deinit();
         for (t.columns.items) |elem| {
@@ -37,11 +54,20 @@ pub fn free_table(allocator: std.mem.Allocator, table: ?Table) void {
             }
         }
     }
+
+    if (stmt.schema) |schema| {
+        allocator.free(schema.name);
+        defer schema.rows.deinit();
+        for (schema.rows.items) |row| {
+            allocator.free(row.col);
+        }
+    }
 }
 
 const ParserError = error{
     UnrecognizedStatement,
     UnexpectedToken,
+    InvalidType,
 };
 
 pub fn parse(allocator: std.mem.Allocator, input: []const u8) !Statement {
@@ -50,12 +76,47 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8) !Statement {
     const tok = try l.next_token();
     defer l.free_token(tok);
     const stmt = switch (tok.kind) {
-        lexer.TokenKind.create => Statement{ .kind = StmtKind.Create, .table = null },
+        lexer.TokenKind.create => parse_create_stmt(allocator, &l),
         lexer.TokenKind.select => try parse_select_stmt(allocator, &l),
         lexer.TokenKind.insert => try parse_insert_stmt(allocator, &l),
         else => return ParserError.UnrecognizedStatement,
     };
     return stmt;
+}
+
+fn parse_create_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
+    var rows = ArrayList(Row).init(allocator);
+
+    _ = try expect_and_get(l, @tagName(lexer.TokenKind.table));
+    const name = try expect_and_get(l, @tagName(lexer.TokenKind.identifier));
+    _ = try expect_and_get(l, @tagName(lexer.TokenKind.oparen));
+    const col = try expect_and_get(l, @tagName(lexer.TokenKind.identifier));
+    const ctype = try l.next_token();
+    defer l.free_token(ctype);
+    _ = try expect_and_get(l, @tagName(lexer.TokenKind.cparen));
+    _ = try expect_and_get(l, @tagName(lexer.TokenKind.semicolon));
+
+    try rows.append(Row{
+        .col = col.strVal(),
+        .ctype = try get_ctype(ctype),
+    });
+
+    return Statement{
+        .kind = StmtKind.Create,
+        .table = null,
+        .schema = TableSchema{
+            .name = name.strVal(),
+            .rows = rows,
+        },
+    };
+}
+
+fn get_ctype(tok: lexer.Token) !CTypes {
+    switch (tok.kind) {
+        .text => return CTypes.text,
+        .int => return CTypes.int,
+        else => return ParserError.InvalidType,
+    }
 }
 
 fn parse_select_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
@@ -71,9 +132,9 @@ fn parse_select_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
             .columns = columns,
             .values = null,
         },
+        .schema = null,
     };
 }
-//select name from tonie;
 
 fn parse_insert_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.into));
@@ -83,8 +144,8 @@ fn parse_insert_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.cparen));
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.values));
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.oparen));
-    _ = try expect_and_get(l, @tagName(lexer.TokenKind.cparen));
     const values = try parse_expression(allocator, l);
+    _ = try expect_and_get(l, @tagName(lexer.TokenKind.cparen));
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.semicolon));
 
     return Statement{
@@ -94,6 +155,7 @@ fn parse_insert_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
             .columns = columns,
             .values = values,
         },
+        .schema = null,
     };
 }
 

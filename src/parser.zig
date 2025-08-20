@@ -2,18 +2,22 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const ArrayList = std.ArrayList;
 
-const Statement = struct {
-    kind: StmtKind,
-    table: ?Table,
-    schema: ?Schema,
+const Statement = union(StmtKind) {
+    insert: InsertStmt,
+    select: SelectStmt,
+    create: CreateStmt,
 };
 
-const StmtKind = enum { Insert, Select, Create };
+const StmtKind = enum {
+    insert,
+    select,
+    create,
+};
 
-const Table = struct {
+const InsertStmt = struct {
     name: []const u8,
     columns: ArrayList([]const u8),
-    values: ?ArrayList(Expression),
+    values: ArrayList(Expression),
 };
 
 const Expression = union(enum) {
@@ -21,7 +25,12 @@ const Expression = union(enum) {
     literal: []const u8,
 };
 
-const Schema = struct {
+const SelectStmt = struct {
+    name: []const u8,
+    columns: ArrayList([]const u8),
+};
+
+const CreateStmt = struct {
     name: []const u8,
     columns: ArrayList(Column),
 };
@@ -72,9 +81,7 @@ fn parse_create_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
     });
 
     return Statement{
-        .kind = StmtKind.Create,
-        .table = null,
-        .schema = Schema{
+        .create = CreateStmt{
             .name = name.strVal(),
             .columns = columns,
         },
@@ -96,13 +103,10 @@ fn parse_select_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.semicolon));
 
     return Statement{
-        .kind = StmtKind.Select,
-        .table = Table{
+        .select = SelectStmt{
             .name = name.strVal(),
             .columns = columns,
-            .values = null,
         },
-        .schema = null,
     };
 }
 
@@ -119,13 +123,11 @@ fn parse_insert_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.semicolon));
 
     return Statement{
-        .kind = StmtKind.Insert,
-        .table = Table{
+        .insert = InsertStmt{
             .name = name.strVal(),
             .columns = columns,
             .values = values,
         },
-        .schema = null,
     };
 }
 

@@ -2,21 +2,16 @@ const std = @import("std");
 const parser = @import("parser.zig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer {
-        const leak_check = gpa.deinit();
-        if (leak_check == .leak) {
-            std.debug.print("Memory leak detected!\n", .{});
-        }
-    }
-    const allocator = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     try print("welcome to akpa, a minimal sql engine\n");
     try print("type '\\q' to quit\n");
 
     while (true) {
         try print("$> ");
         const line = try getInput(allocator);
-        defer allocator.free(line);
         if (std.mem.eql(u8, line, "\\q") == true) {
             break;
         }
@@ -25,7 +20,6 @@ pub fn main() !void {
             std.debug.print("{any}\n", .{err});
             continue;
         };
-        defer parser.free_stmt(allocator, stmt);
         std.debug.print("{any}\n", .{stmt});
     }
 }

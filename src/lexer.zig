@@ -146,15 +146,6 @@ pub const Lexer = struct {
 
         return self.next_token() catch null;
     }
-
-    pub fn free_token(self: *Lexer, token: Token) void {
-        switch (token.kind) {
-            .identifier, .string => |i| {
-                self.allocator.free(i);
-            },
-            else => {},
-        }
-    }
 };
 
 fn extract_numeric_token(code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {

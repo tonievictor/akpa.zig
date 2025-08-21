@@ -1,4 +1,5 @@
 const std = @import("std");
+const expect = std.testing.expect;
 
 pub const TokenKind = union(enum) {
     identifier: []const u8,
@@ -59,6 +60,7 @@ pub const Lexer = struct {
     length: usize,
     index: u32,
     tok: Token,
+    col: u32,
     allocator: std.mem.Allocator,
 
     pub fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
@@ -67,6 +69,7 @@ pub const Lexer = struct {
             .length = input.len,
             .allocator = allocator,
             .index = 0,
+            .col = 1,
             .tok = Token.init(TokenKind{ .EOF = {} }, 0),
         };
     }
@@ -79,58 +82,72 @@ pub const Lexer = struct {
         while ((self.index < self.length) and self.input[self.index] == ' ') {
             self.index += 1;
         }
+
+        if ((self.index < self.length) and self.input[self.index] == '\n') {
+            self.col = 1;
+        }
+
         if (self.index >= self.length) {
             self.tok = Token.init(TokenKind{ .EOF = {} }, self.index);
             return self.tok;
         }
+
         const char = self.input[self.index];
         switch (char) {
             ';' => {
                 const ttype = TokenKind{ .semicolon = ';' };
                 self.index += 1;
-                self.tok = Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.col);
+                self.col += 1;
                 return self.tok;
             },
             ',' => {
                 const ttype = TokenKind{ .comma = ',' };
                 self.index += 1;
-                self.tok = Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.col);
+                self.col += 1;
                 return self.tok;
             },
             '*' => {
                 const ttype = TokenKind{ .asterix = '*' };
                 self.index += 1;
-                self.tok = Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.col);
+                self.col += 1;
                 return self.tok;
             },
             '(' => {
                 const ttype = TokenKind{ .oparen = '(' };
                 self.index += 1;
-                self.tok = Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.col);
+                self.col += 1;
                 return self.tok;
             },
             ')' => {
                 const ttype = TokenKind{ .cparen = ')' };
                 self.index += 1;
-                self.tok = Token.init(ttype, self.index);
+                self.tok = Token.init(ttype, self.col);
+                self.col += 1;
                 return self.tok;
             },
             '0'...'9' => {
-                const amtv = try extract_numeric_token(self.input, self.index);
+                const amtv = try extract_numeric_token(self.input, self.index, self.col);
                 self.index = amtv.i;
                 self.tok = amtv.t;
+                self.col += 1;
                 return amtv.t;
             },
             '\'' => {
-                const amtv = try extract_string_token(self.allocator, self.input, self.index);
+                const amtv = try extract_string_token(self.allocator, self.input, self.index, self.col);
                 self.index = amtv.i;
                 self.tok = amtv.t;
+                self.col += 1;
                 return amtv.t;
             },
             'A'...'Z', 'a'...'z' => {
-                const amtv = try extract_character_sequence(self.allocator, self.input, self.index);
+                const amtv = try extract_character_sequence(self.allocator, self.input, self.index, self.col);
                 self.index = amtv.i;
                 self.tok = amtv.t;
+                self.col += 1;
                 return amtv.t;
             },
             else => {
@@ -148,7 +165,7 @@ pub const Lexer = struct {
     }
 };
 
-fn extract_numeric_token(code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {
+fn extract_numeric_token(code: []const u8, s_index: u32, col: u32) !struct { t: Token, i: u32 } {
     var index = s_index;
     while (index < code.len) {
         switch (code[index]) {
@@ -160,11 +177,11 @@ fn extract_numeric_token(code: []const u8, s_index: u32) !struct { t: Token, i: 
     }
     const value = try std.fmt.parseInt(u32, code[s_index..index], 0);
     const ttype = TokenKind{ .numeric = value };
-    const token = Token.init(ttype, s_index + 1);
+    const token = Token.init(ttype, col);
     return .{ .t = token, .i = index };
 }
 
-fn extract_string_token(allocator: std.mem.Allocator, code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {
+fn extract_string_token(allocator: std.mem.Allocator, code: []const u8, s_index: u32, col: u32) !struct { t: Token, i: u32 } {
     var index = s_index + 1;
 
     while (index < code.len) {
@@ -175,13 +192,13 @@ fn extract_string_token(allocator: std.mem.Allocator, code: []const u8, s_index:
         index += 1;
     }
 
-    const copied = try allocator.dupe(u8, code[s_index..index]);
+    const copied = try allocator.dupe(u8, code[s_index + 1 .. index - 1]);
     const ttype = TokenKind{ .string = copied };
-    const token = Token.init(ttype, s_index + 1);
+    const token = Token.init(ttype, col);
     return .{ .t = token, .i = index };
 }
 
-fn extract_character_sequence(allocator: std.mem.Allocator, code: []const u8, s_index: u32) !struct { t: Token, i: u32 } {
+fn extract_character_sequence(allocator: std.mem.Allocator, code: []const u8, s_index: u32, col: u32) !struct { t: Token, i: u32 } {
     var index = s_index;
     while (index < code.len) {
         switch (code[index]) {
@@ -193,7 +210,7 @@ fn extract_character_sequence(allocator: std.mem.Allocator, code: []const u8, s_
     }
 
     const ttype = try make_identifier_or_keyword(allocator, code[s_index..index]);
-    const token = Token.init(ttype, s_index + 1);
+    const token = Token.init(ttype, col);
     return .{ .t = token, .i = index };
 }
 
@@ -220,4 +237,80 @@ fn make_identifier_or_keyword(allocator: std.mem.Allocator, string: []const u8) 
         const copied = try allocator.dupe(u8, string);
         return TokenKind{ .identifier = copied };
     }
+}
+
+test "test next token" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    var lexer = Lexer.init("insert select create table text int into values from;*)( 123 'tonie' iden", allocator);
+
+    const len = 16;
+    const tokens: [len]Token = .{
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+        try lexer.next_token(),
+    };
+
+    const test_tokens: [len]Token = .{
+        Token{ .kind = TokenKind.insert, .col = 1 },
+        Token{ .kind = TokenKind.select, .col = 2 },
+        Token{ .kind = TokenKind.create, .col = 3 },
+        Token{ .kind = TokenKind.table, .col = 4 },
+        Token{ .kind = TokenKind.text, .col = 5 },
+        Token{ .kind = TokenKind.int, .col = 6 },
+        Token{ .kind = TokenKind.into, .col = 7 },
+        Token{ .kind = TokenKind.values, .col = 8 },
+        Token{ .kind = TokenKind.from, .col = 9 },
+        Token{ .kind = TokenKind{ .semicolon = ';' }, .col = 10 },
+        Token{ .kind = TokenKind{ .asterix = '*' }, .col = 11 },
+        Token{ .kind = TokenKind{ .cparen = ')' }, .col = 12 },
+        Token{ .kind = TokenKind{ .oparen = '(' }, .col = 13 },
+        Token{ .kind = TokenKind{ .numeric = 123 }, .col = 14 },
+        Token{ .kind = TokenKind{ .string = "tonie" }, .col = 15 },
+        Token{ .kind = TokenKind{ .identifier = "iden" }, .col = 16 },
+    };
+
+    const cmp = struct {
+        pub fn eql(toks: []const Token) bool {
+            for (toks, test_tokens) |tok, test_tok| {
+                if (tok.col != test_tok.col) {
+                    return false;
+                }
+
+                if (std.mem.eql(u8, @tagName(tok.kind), @tagName(test_tok.kind)) == false) {
+                    return false;
+                }
+
+                switch (tok.kind) {
+                    .string, .identifier => |val| {
+                        if (std.mem.eql(u8, val, test_tok.strVal()) == false) {
+                            return false;
+                        }
+                    },
+                    .numeric => |val| {
+                        if ((val == test_tok.numVal()) == false) {
+                            return false;
+                        }
+                    },
+                    else => continue,
+                }
+            }
+            return true;
+        }
+    }.eql;
+
+    try expect(cmp(&tokens) == true);
 }

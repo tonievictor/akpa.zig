@@ -41,6 +41,19 @@ pub const Token = struct {
         };
     }
 
+    const ValRes = union {
+        int: u32,
+        string: []const u8,
+    };
+    pub fn value(self: Token) ValRes {
+        return switch (self.kind) {
+            .identifier => ValRes{ .string = self.kind.identifier },
+            .string => ValRes{ .string = self.kind.string },
+            .numeric => ValRes{ .int = self.kind.numeric },
+            else => unreachable,
+        };
+    }
+
     pub fn numVal(self: Token) u32 {
         return switch (self.kind) {
             .numeric => self.kind.numeric,
@@ -88,7 +101,7 @@ pub const Lexer = struct {
         }
 
         if (self.index >= self.length) {
-            self.tok = Token.init(TokenKind{ .EOF = {} }, self.index);
+            self.tok = Token.init(TokenKind{ .EOF = {} }, self.col);
             return self.tok;
         }
 
@@ -244,8 +257,9 @@ test "test next token" {
     const allocator = gpa.allocator();
     var lexer = Lexer.init("insert select create table text int into values from;*)( 123 'tonie' iden", allocator);
 
-    const len = 16;
+    const len = 17;
     const tokens: [len]Token = .{
+        try lexer.next_token(),
         try lexer.next_token(),
         try lexer.next_token(),
         try lexer.next_token(),
@@ -281,6 +295,7 @@ test "test next token" {
         Token{ .kind = TokenKind{ .numeric = 123 }, .col = 14 },
         Token{ .kind = TokenKind{ .string = "tonie" }, .col = 15 },
         Token{ .kind = TokenKind{ .identifier = "iden" }, .col = 16 },
+        Token{ .kind = TokenKind.EOF, .col = 17 },
     };
 
     const cmp = struct {

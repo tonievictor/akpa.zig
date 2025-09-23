@@ -1,5 +1,5 @@
 const std = @import("std");
-const parser = @import("parser.zig");
+const parser = @import("parser/parser.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -16,8 +16,7 @@ pub fn main() !void {
             break;
         }
 
-        const stmt = parser.parse(allocator, line) catch |err| {
-            std.debug.print("{any}\n", .{err});
+        const stmt = parser.parse(allocator, line) catch {
             continue;
         };
         std.debug.print("{any}\n", .{stmt});

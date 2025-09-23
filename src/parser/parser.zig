@@ -2,10 +2,10 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const ArrayList = std.ArrayList;
 
-const Statement = union(StmtKind) {
+pub const Statement = union(StmtKind) {
     insert: InsertStmt,
     select: SelectStmt,
-    create: CreateStmt,
+    create: CreateTableStmt,
 };
 
 const StmtKind = enum {
@@ -14,7 +14,7 @@ const StmtKind = enum {
     create,
 };
 
-const InsertStmt = struct {
+pub const InsertStmt = struct {
     name: []const u8,
     columns: ArrayList([]const u8),
     values: ArrayList(Expression),
@@ -25,22 +25,22 @@ const Expression = union(enum) {
     literal: []const u8,
 };
 
-const SelectStmt = struct {
+pub const SelectStmt = struct {
     name: []const u8,
     columns: ArrayList([]const u8),
 };
 
-const CreateStmt = struct {
+pub const CreateTableStmt = struct {
     name: []const u8,
     columns: ArrayList(Column),
 };
 
-const Column = struct {
+pub const Column = struct {
     name: []const u8,
-    ctype: CTypes,
+    datatype: DataType,
 };
 
-const CTypes = enum {
+const DataType = enum {
     text,
     int,
 };
@@ -56,7 +56,7 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8) !Statement {
 
     const tok = try l.next_token();
     const stmt = switch (tok.kind) {
-        lexer.TokenKind.create => parse_create_stmt(allocator, &l),
+        lexer.TokenKind.create => parse_create_table_stmt(allocator, &l),
         lexer.TokenKind.select => try parse_select_stmt(allocator, &l),
         lexer.TokenKind.insert => try parse_insert_stmt(allocator, &l),
         else => return ParserError.UnrecognizedStatement,
@@ -64,7 +64,7 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8) !Statement {
     return stmt;
 }
 
-fn parse_create_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
+fn parse_create_table_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
     var columns = ArrayList(Column).init(allocator);
 
     _ = try expect_and_get(l, @tagName(lexer.TokenKind.table));
@@ -77,22 +77,25 @@ fn parse_create_stmt(allocator: std.mem.Allocator, l: *lexer.Lexer) !Statement {
 
     try columns.append(Column{
         .name = col.strVal(),
-        .ctype = try get_ctype(ctype),
+        .datatype = try get_ctype(ctype),
     });
 
     return Statement{
-        .create = CreateStmt{
+        .create = CreateTableStmt{
             .name = name.strVal(),
             .columns = columns,
         },
     };
 }
 
-fn get_ctype(tok: lexer.Token) !CTypes {
+fn get_ctype(tok: lexer.Token) !DataType {
     switch (tok.kind) {
-        .text => return CTypes.text,
-        .int => return CTypes.int,
-        else => return ParserError.InvalidType,
+        .text => return DataType.text,
+        .int => return DataType.int,
+        else => {
+            std.debug.print("{any} is not a valid type at {d}\n", .{ tok.value(), tok.col });
+            return ParserError.InvalidType;
+        },
     }
 }
 
@@ -138,6 +141,7 @@ fn parse_columns(allocator: std.mem.Allocator, l: *lexer.Lexer) !ArrayList([]con
     const col = switch (tok.kind) {
         .identifier => tok.strVal(),
         else => {
+            std.debug.print("expected an identifier but got {s} at {d}\n", .{ @tagName(tok.kind), tok.col });
             return ParserError.UnexpectedToken;
         },
     };
@@ -152,6 +156,7 @@ fn parse_expression(allocator: std.mem.Allocator, l: *lexer.Lexer) !ArrayList(Ex
         .string => Expression{ .literal = tok.strVal() },
         .numeric => Expression{ .integer = tok.numVal() },
         else => {
+            std.debug.print("expected an expression but got {s} at {d}\n", .{ @tagName(tok.kind), tok.col });
             return ParserError.UnexpectedToken;
         },
     };
@@ -162,6 +167,7 @@ fn parse_expression(allocator: std.mem.Allocator, l: *lexer.Lexer) !ArrayList(Ex
 fn expect_and_get(l: *lexer.Lexer, kind: []const u8) !lexer.Token {
     const tok = try l.next_token();
     if (!std.mem.eql(u8, @tagName(tok.kind), kind)) {
+        std.debug.print("expected {s} but got {s} at {d}\n", .{ kind, @tagName(tok.kind), tok.col });
         return ParserError.UnexpectedToken;
     }
     return tok;
